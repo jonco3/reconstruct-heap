@@ -205,7 +205,7 @@ function createEdge(node, name, addr) {
       id = edgeNameCount++;
       edgeNameToIdMap.set(name, id);
     }
-    name = `name_${id}`;
+    name = `e${id}`;
   }
 
   node.outgoingEdges.push(addr);
@@ -217,9 +217,9 @@ function outputNodes() {
     let name = nodeName(node);
     if (node.kind === StringKind) {
       // Don't use real string contents, just make a unique string.
-      print(`let ${name} = "${name}";`);
+      print(`let ${name}="${node.id}";`);
     } else if (node.kind === ObjectKind || node.kind === ScriptKind) {
-      print(`let ${name} = {`);
+      let names = [];
       for (let i = 0; i < node.outgoingEdges.length; i++) {
         let addr = node.outgoingEdges[i];
         let edgeName = node.outgoingEdgeNames[i];
@@ -233,12 +233,12 @@ function outputNodes() {
         }
 
         if (typeof edgeName === "string") {
-          print(`  ${edgeName}: undefined,`);
+          names.push(`${edgeName}:0`);
         }
       }
-      print(`};`);
+      print(`let ${name}={${names.join(",")}};`);
     } else if (node.kind === SymbolKind) {
-      print(`const ${name} = Symbol();`);
+      print(`const ${name}=Symbol();`);
     }
   }
 }
@@ -264,12 +264,12 @@ function outputEdges() {
       }
 
       if (typeof name === "string") {
-        print(`${nodeName(node)}.${name} = ${nodeName(target)};`);
+        print(`${nodeName(node)}.${name}=${nodeName(target)};`);
       } else {
         if (typeof name !== "number") {
           throw "Unexpected edge name";
         }
-        print(`${nodeName(node)}[${name}] = ${nodeName(target)};`);
+        print(`${nodeName(node)}[${name}]=${nodeName(target)};`);
       }
     }
   }
@@ -298,13 +298,13 @@ function outputRootArray(color, roots) {
 
     let target = nodes[addressToIdMap.get(root.address)];
     if (includeEdgeTo(target)) {
-      print(`${color}Root()[${i++}] = ${nodeName(target)};`);
+      print(`${color}Root()[${i++}]=${nodeName(target)};`);
     }
   }
 }
 
 function nodeName(node) {
-  return "node_" + formatAddr(node.address);
+  return "n" + node.id;
 }
 
 main(...scriptArgs);
