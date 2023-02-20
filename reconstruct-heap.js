@@ -11,9 +11,11 @@ function main(path) {
   let text = os.file.readFile(path);
   parseGCLog(text);
 
+  print("(() => {")
   outputNodes();
   outputEdges();
   outputRoots();
+  print("})();")
 }
 
 let blackRoots = [];
@@ -212,17 +214,21 @@ function createEdge(node, name, addr) {
 
 function outputNodes() {
   for (let node of nodes) {
-    let name = nodeName(node.address);
+    let name = nodeName(node);
     if (node.kind === StringKind) {
       // Don't use real string contents, just make a unique string.
-      print(`const ${name} = "${name}"`);
+      print(`let ${name} = "${name}";`);
     } else if (node.kind === ObjectKind || node.kind === ScriptKind) {
-      print(`const ${name} = {`);
+      print(`let ${name} = {`);
       for (let i = 0; i < node.outgoingEdges.length; i++) {
-        let edge = node.outgoingEdges[i];
+        let addr = node.outgoingEdges[i];
         let edgeName = node.outgoingEdgeNames[i];
+        if (!addressToIdMap.has(addr)) {
+          throw "Unknown edge target";
+        }
 
-        if (!includeEdge(edge)) {
+        let target = nodes[addressToIdMap.get(addr)];
+        if (!includeEdgeTo(target)) {
           continue;
         }
 
@@ -246,34 +252,30 @@ function outputEdges() {
     }
 
     for (let i = 0; i < node.outgoingEdges.length; i++) {
-      let edge = node.outgoingEdges[i];
+      let addr = node.outgoingEdges[i];
       let name = node.outgoingEdgeNames[i];
-      if (!addressToIdMap.has(edge)) {
+      if (!addressToIdMap.has(addr)) {
         throw "Unknown edge target";
       }
 
-      if (!includeEdge(edge)) {
+      let target = nodes[addressToIdMap.get(addr)];
+      if (!includeEdgeTo(target)) {
         continue;
       }
 
       if (typeof name === "string") {
-        print(`${nodeName(node.address)}.${name} = ${nodeName(edge)}`);
+        print(`${nodeName(node)}.${name} = ${nodeName(target)};`);
       } else {
         if (typeof name !== "number") {
           throw "Unexpected edge name";
         }
-        print(`${nodeName(node.address)}[${name}] = ${nodeName(edge)}`);
+        print(`${nodeName(node)}[${name}] = ${nodeName(target)};`);
       }
     }
   }
 }
 
-function includeEdge(edge) {
-  if (!addressToIdMap.has(edge)) {
-    throw "Unknown edge target";
-  }
-
-  let target = nodes[addressToIdMap.get(edge)];
+function includeEdgeTo(target) {
   return target.kind === StringKind ||
          target.kind === SymbolKind ||
          target.kind === ObjectKind ||
@@ -291,15 +293,18 @@ function outputRootArray(color, roots) {
   let i = 0;
   for (let root of roots) {
     if (!addressToIdMap.has(root.address)) {
-      throw "Unknown root address";
+      throw "Unknown root target";
     }
 
-    print(`${color}Root()[${i++}] = ${nodeName(root.address)};`);
+    let target = nodes[addressToIdMap.get(root.address)];
+    if (includeEdgeTo(target)) {
+      print(`${color}Root()[${i++}] = ${nodeName(target)};`);
+    }
   }
 }
 
-function nodeName(addr) {
-  return "node_" + formatAddr(addr);
+function nodeName(node) {
+  return "node_" + formatAddr(node.address);
 }
 
 main(...scriptArgs);
