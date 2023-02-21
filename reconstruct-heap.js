@@ -11,6 +11,8 @@ function main(path) {
   let text = os.file.readFile(path);
   parseGCLog(text);
 
+  markReferencedNodes();
+
   print("(() => {")
   outputNodes();
   outputEdges();
@@ -181,7 +183,8 @@ function createNode(addr, color, kind, details) {
               kind,
               details,
               outgoingEdges: [],
-              outgoingEdgeNames: []};
+              outgoingEdgeNames: [],
+              marked: false};
   nodes.push(node);
 
   addressToIdMap.set(addr, node.id);
@@ -212,8 +215,54 @@ function createEdge(node, name, addr) {
   node.outgoingEdgeNames.push(name);
 }
 
+function markReferencedNodes() {
+  // Transitively mark referenced nodes. Heap dumps always contain nodes for all
+  // permanent atoms even though most are never referenced and we don't want
+  // to output these. This also removes any other garbage that may be present.
+
+  let worklist = [];
+
+  for (let roots of [blackRoots, grayRoots]) {
+    for (let root of roots) {
+      if (!addressToIdMap.has(root.address)) {
+        throw "Unknown root target";
+      }
+
+      let target = nodes[addressToIdMap.get(root.address)];
+      if (!target.marked) {
+        target.marked = true;
+        worklist.push(target);
+      }
+    }
+  }
+
+  while (worklist.length) {
+    let node = worklist.pop();
+    if (!includeNode(node)) {
+      continue;
+    }
+
+    for (let i = 0; i < node.outgoingEdges.length; i++) {
+      let addr = node.outgoingEdges[i];
+      if (!addressToIdMap.has(addr)) {
+        throw "Unknown edge target";
+      }
+
+      let target = nodes[addressToIdMap.get(addr)];
+      if (!target.marked) {
+        target.marked = true;
+        worklist.push(target);
+      }
+    }
+  }
+}
+
 function outputNodes() {
   for (let node of nodes) {
+    if (!node.marked) {
+      continue;
+    }
+
     let name = nodeName(node);
     if (node.kind === StringKind) {
       // Don't use real string contents, just make a unique string.
@@ -248,7 +297,7 @@ function outputEdges() {
   print();
 
   for (let node of nodes) {
-    if (!includeNode(node)) {
+    if (!node.marked) {
       continue;
     }
 
