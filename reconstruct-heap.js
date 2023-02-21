@@ -28,14 +28,14 @@ let edgeNameCount = 0;
 const StringKind = 1;        // Handled.
 const ObjectKind = 2;        // Handled.
 const SymbolKind = 3;        // Handled.
-const JitcodeKind = 4;       // Ignored.
+const JitcodeKind = 4;       // Treated as objects.
 const ScriptKind = 5;        // Treated as objects (could improve).
 const ShapeKind = 6;         // Handled as part of object handling.
 const BaseShapeKind = 7;     // Handled as part of object handling.
-const GetterSetterKind = 8;  // Ignored.
+const GetterSetterKind = 8;  // Treated as objects.
 const PropMapKind = 9;       // Handled as part of object handling.
-const ScopeKind = 10;        // Ignored.
-const RegExpSharedKind = 11; // Ignored.
+const ScopeKind = 10;        // Treated as objects.
+const RegExpSharedKind = 11; // Treated as objects.
 
 function parseGCLog(text) {
   let node;
@@ -218,7 +218,10 @@ function outputNodes() {
     if (node.kind === StringKind) {
       // Don't use real string contents, just make a unique string.
       print(`let ${name}="${node.id}";`);
-    } else if (node.kind === ObjectKind || node.kind === ScriptKind) {
+    } else if (node.kind === SymbolKind) {
+      print(`const ${name}=Symbol();`);
+    } else if (includeNode(node)) {
+      // Use objects for all other kinds.
       let names = [];
       for (let i = 0; i < node.outgoingEdges.length; i++) {
         let addr = node.outgoingEdges[i];
@@ -237,8 +240,6 @@ function outputNodes() {
         }
       }
       print(`let ${name}={${names.join(",")}};`);
-    } else if (node.kind === SymbolKind) {
-      print(`const ${name}=Symbol();`);
     }
   }
 }
@@ -247,7 +248,7 @@ function outputEdges() {
   print();
 
   for (let node of nodes) {
-    if (node.kind !== ObjectKind) {
+    if (!includeNode(node)) {
       continue;
     }
 
@@ -275,11 +276,19 @@ function outputEdges() {
   }
 }
 
+function includeNode(node) {
+  return node.kind === StringKind ||
+         node.kind === SymbolKind ||
+         node.kind === ObjectKind ||
+         node.kind === ScriptKind ||
+         node.kind === JitcodeKind ||
+         node.kind === GetterSetterKind ||
+         node.kind === ScopeKind ||
+         node.kind === RegExpSharedKind;
+}
+
 function includeEdgeTo(target) {
-  return target.kind === StringKind ||
-         target.kind === SymbolKind ||
-         target.kind === ObjectKind ||
-         target.kind === ScriptKind;
+  return includeNode(target);
 }
 
 function outputRoots() {
